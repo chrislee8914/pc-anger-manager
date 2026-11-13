@@ -357,18 +357,18 @@ internal sealed class TrayApp : ApplicationContext
     }
 
     // 메뉴 항목 여백 (왼쪽, 위, 오른쪽, 아래). 숫자를 키우면 메뉴가 넓고 여유 있어짐
-    private static Padding ItemPadding => new(8, 2, 32, 2);
-    private static Padding LabelPadding => new(10, 0, 24, 0);
-    private static Padding LabelMargin => new(0, 0, 0, 0);
+    // 좌클릭(상태)·우클릭(메뉴) 모두 같은 줄 간격을 쓰도록 위아래 값은 하나로 통일
+    private static Padding ItemPadding => new(10, 0, 24, 0);
+    private static Padding ItemMargin => new(0, 0, 0, 0);
 
-    /// <summary>메뉴와 모든 하위 메뉴에 여백 적용</summary>
+    /// <summary>메뉴와 모든 하위 메뉴에 같은 여백 적용</summary>
     private static void ApplyMenuSpacing(ToolStrip strip)
     {
         foreach (ToolStripItem item in strip.Items)
         {
             if (item is ToolStripSeparator) continue;
-            item.Padding = item is StatusLine ? LabelPadding : ItemPadding;
-            if (item is StatusLine) item.Margin = LabelMargin;
+            item.Padding = ItemPadding;
+            item.Margin = ItemMargin;
             if (item is ToolStripMenuItem { HasDropDownItems: true } sub)
                 ApplyMenuSpacing(sub.DropDown);
         }
