@@ -213,7 +213,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         bool slowTurn = _status.Sample(_settings.Basis);
         ApplySpeed();
-        ApplyAnger();
+        ApplyMood();
         UpdateTooltip();
 
         // 5초마다 작업 표시줄 모니터 배율 확인 (알림을 놓쳐도 맞춰지게)
@@ -225,15 +225,20 @@ internal sealed class TrayApp : ApplicationContext
         if (_devMode) _animator.RefreshIfChanged();
     }
 
-    // 분노 모드 기준 (SPEC 5.4): 90% 이상이면 켜고, 85% 미만이면 끔 (경계에서 깜빡임 방지)
-    private const double AngerOn = 90;
-    private const double AngerOff = 85;
+    // 기분 단계 기준 (SPEC 5.4). 올라갈 때와 내려갈 때 5% 차이 → 경계에서 깜빡임 방지
+    private const double NormalUp = 60, NormalDown = 55;   // 평온 ↔ 보통
+    private const double AngryUp = 90, AngryDown = 85;     // 보통 ↔ 분노
 
-    private void ApplyAnger()
+    private void ApplyMood()
     {
-        double value = _status.BasisValue(_settings.Basis);
-        if (!_animator.IsAngry && value >= AngerOn) _animator.SetAngry(true);
-        else if (_animator.IsAngry && value < AngerOff) _animator.SetAngry(false);
+        double v = _status.BasisValue(_settings.Basis);
+        Mood next = _animator.Mood switch
+        {
+            Mood.Calm => v >= AngryUp ? Mood.Angry : v >= NormalUp ? Mood.Normal : Mood.Calm,
+            Mood.Normal => v >= AngryUp ? Mood.Angry : v < NormalDown ? Mood.Calm : Mood.Normal,
+            _ => v < NormalDown ? Mood.Calm : v < AngryDown ? Mood.Normal : Mood.Angry,
+        };
+        _animator.SetMood(next);
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => _ui.Post(_ => CheckIconSize(), null);

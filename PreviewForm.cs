@@ -46,32 +46,29 @@ internal sealed class PreviewForm : Form
         var anim = _app.Animator;
 
         // 기본 캐릭터는 그림 글자를 매번 새로 읽어서 수정 내용 즉시 반영, 커스텀 러너는 불러온 그림 사용
-        bool ownsFrames = anim.IsAngry || !anim.IsCustom;
-        List<Bitmap> frames =
-            anim.IsAngry ? Sprites.Devil.Select(f => Frames.Render(f, Sprites.DevilColor, Sprites.DevilPalette)).ToList() :
-            anim.IsCustom ? anim.CustomFrames.ToList() :
-            Sprites.Get(anim.Runner).Select(f => Frames.Render(f, anim.Color)).ToList();
+        // 지금 트레이에 보이는 모습(천사/노랑/악마 토끼 포함)을 매번 새로 그려서 수정 내용 즉시 반영
+        List<Bitmap> frames = anim.RenderActiveFrames();
         try
         {
             if (frames.Count > 0) PaintFrames(g, anim, frames);
         }
         finally
         {
-            if (ownsFrames) foreach (var bmp in frames) bmp.Dispose();
+            foreach (var bmp in frames) bmp.Dispose();
         }
     }
 
     private void PaintFrames(Graphics g, Animator anim, List<Bitmap> frames)
     {
         // 검은 아이콘(다크 모드)이면 밝은 배경, 흰 아이콘이면 어두운 배경 (작업 표시줄처럼)
-        bool darkIcon = !anim.IsCustom && !anim.IsAngry && anim.Color.GetBrightness() < 0.5f;
+        bool darkIcon = anim.ActiveLook == anim.Runner && !anim.IsCustom && anim.Color.GetBrightness() < 0.5f;
         g.Clear(darkIcon ? Color.FromArgb(225, 225, 225) : Color.FromArgb(32, 32, 32));
         int index = anim.FrameIndex % frames.Count;
 
         // 큰 화면: 지금 프레임
         int bigSize = Frames.IconSize * BigZoom;
         var bigBox = new Rectangle(Margin_, Margin_, bigSize, bigSize);
-        if (!anim.IsCustom || anim.IsAngry) DrawGrid(g, bigBox, BigZoom);
+        if (!anim.IsCustom || anim.ActiveLook != anim.Runner) DrawGrid(g, bigBox, BigZoom);
         Frames.DrawScaled(g, frames[index], bigBox);
 
         // 작은 화면: 모든 프레임 (지금 프레임은 테두리 강조)
@@ -93,7 +90,7 @@ internal sealed class PreviewForm : Form
         // 상태 숫자
         double basisValue = _app.Status.BasisValue(_app.Basis);
         string status =
-            $"캐릭터: {anim.Runner}{(anim.IsAngry ? " → 악마 토끼 (분노 모드)" : "")}\n" +
+            $"캐릭터: {anim.Runner} → 지금 모습: {anim.ActiveLook} ({anim.Mood})\n" +
             $"속도 기준 {_app.Basis}: 3초 평균 {basisValue:0.0}%\n" +
             $"단계 {SpeedRule.Level(basisValue)} → {anim.Fps} fps (최대 {_app.MaxFps})\n" +
             $"툴팁: {_app.TooltipText.Replace("\n", " / ")}";

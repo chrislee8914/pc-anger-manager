@@ -2,6 +2,9 @@ using System.Diagnostics;
 
 namespace PcAngerManager;
 
+/// <summary>기분 단계 (SPEC 5.4)</summary>
+internal enum Mood { Calm, Normal, Angry }
+
 /// <summary>
 /// 트레이 아이콘을 정해진 초당 프레임 수로 바꿔 주는 장치.
 ///
@@ -11,17 +14,21 @@ namespace PcAngerManager;
 ///  - Windows 타이머는 약 15.6ms 단위로만 깨어나서 정확하지 않으므로,
 ///    "다음 프레임 예정 시각"을 시계로 계산해 평균 속도가 설정값과 맞게 함
 ///
-/// 분노 모드(SPEC 5.4): 켜지면 지금 캐릭터 대신 악마 토끼 아이콘을 보여 줌.
-/// 두 아이콘 묶음을 미리 만들어 두므로 바꿀 때 비용이 거의 없음.
+/// 기분 단계(SPEC 5.4): 분노 = 악마 토끼(모든 러너), 러너가 토끼면 평온 = 천사 토끼, 보통 = 노란 토끼.
+/// 모든 아이콘 묶음을 미리 만들어 두므로 단계가 바뀔 때 비용이 거의 없음.
 /// </summary>
 internal sealed class Animator : IDisposable
 {
+    public const string MoodRunner = "토끼"; // 천사·노랑 토끼가 적용되는 러너
+
     private readonly NotifyIcon _tray;
     private readonly System.Windows.Forms.Timer _timer = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
     private Func<int, Icon[]> _buildRunnerIcons = _ => [];
     private Icon[] _runnerIcons = [];
+    private Icon[] _angelIcons = [];
+    private Icon[] _normalIcons = [];
     private Icon[] _devilIcons = [];
     private List<Bitmap> _customFrames = [];
     private string _signature = "";
@@ -31,13 +38,31 @@ internal sealed class Animator : IDisposable
 
     public string Runner { get; private set; } = "";
     public bool IsCustom { get; private set; }
-    public bool IsAngry { get; private set; }
+    public Mood Mood { get; private set; } = Mood.Calm;
     public IReadOnlyList<Bitmap> CustomFrames => _customFrames;
     public Color Color { get; private set; } = Color.White;
     public int FrameIndex { get; private set; }
     public int Fps { get; private set; } = 5;
 
-    private Icon[] ActiveIcons => IsAngry ? _devilIcons : _runnerIcons;
+    /// <summary>러너가 토끼라서 천사·노랑 토끼가 적용되는지</summary>
+    private bool UsesMoodRabbit => !IsCustom && Runner == MoodRunner;
+
+    private Icon[] ActiveIcons => Mood switch
+    {
+        Mood.Angry => _devilIcons,
+        Mood.Calm when UsesMoodRabbit => _angelIcons,
+        Mood.Normal when UsesMoodRabbit => _normalIcons,
+        _ => _runnerIcons,
+    };
+
+    /// <summary>지금 보여 주는 모습의 이름 (미리보기용)</summary>
+    public string ActiveLook => Mood switch
+    {
+        Mood.Angry => "악마 토끼",
+        Mood.Calm when UsesMoodRabbit => "천사 토끼",
+        Mood.Normal when UsesMoodRabbit => "노란 토끼",
+        _ => Runner,
+    };
 
     public Animator(NotifyIcon tray)
     {
@@ -53,7 +78,7 @@ internal sealed class Animator : IDisposable
         IsCustom = false;
         DisposeCustomFrames();
         var frames = Sprites.Get(runner);
-        _signature = Signature(frames) + Signature(Sprites.Devil);
+        _signature = AllSpritesSignature(frames);
         _buildRunnerIcons = size => frames.Select(f => Frames.RenderIcon(f, color, size)).ToArray();
         RebuildIcons();
     }
@@ -78,11 +103,11 @@ internal sealed class Animator : IDisposable
         if (!IsCustom) SetRunner(Runner, color);
     }
 
-    /// <summary>분노 모드 켜기/끄기. 프레임 위치는 이어서 재생</summary>
-    public void SetAngry(bool angry)
+    /// <summary>기분 단계 변경. 프레임 위치는 이어서 재생</summary>
+    public void SetMood(Mood mood)
     {
-        if (angry == IsAngry) return;
-        IsAngry = angry;
+        if (mood == Mood) return;
+        Mood = mood;
         ShowCurrentFrame();
     }
 
@@ -98,8 +123,18 @@ internal sealed class Animator : IDisposable
     public void RefreshIfChanged()
     {
         if (IsCustom) return;
-        if (Signature(Sprites.Get(Runner)) + Signature(Sprites.Devil) != _signature) SetRunner(Runner, Color);
+        if (AllSpritesSignature(Sprites.Get(Runner)) != _signature) SetRunner(Runner, Color);
     }
+
+    /// <summary>미리보기용: 지금 보여 주는 모습의 프레임 이미지들 (새로 만든 복사본, 받은 쪽에서 해제)</summary>
+    public List<Bitmap> RenderActiveFrames() => Mood switch
+    {
+        Mood.Angry => Sprites.Devil.Select(f => Frames.Render(f, Sprites.DevilColor, Sprites.DevilPalette)).ToList(),
+        Mood.Calm when UsesMoodRabbit => Sprites.Angel.Select(f => Frames.Render(f, Sprites.AngelColor, Sprites.AngelPalette)).ToList(),
+        Mood.Normal when UsesMoodRabbit => Sprites.Get(MoodRunner).Select(f => Frames.Render(f, Sprites.NormalColor)).ToList(),
+        _ when IsCustom => _customFrames.Select(b => new Bitmap(b)).ToList(),
+        _ => Sprites.Get(Runner).Select(f => Frames.Render(f, Color)).ToList(),
+    };
 
     public void SetFps(int fps)
     {
@@ -113,15 +148,16 @@ internal sealed class Animator : IDisposable
     private void RebuildIcons()
     {
         _iconSize = Frames.TrayIconSize();
-        var oldRunner = _runnerIcons;
-        var oldDevil = _devilIcons;
+        Icon[][] old = [_runnerIcons, _angelIcons, _normalIcons, _devilIcons];
+
         _runnerIcons = _buildRunnerIcons(_iconSize);
-        _devilIcons = Sprites.Devil
-            .Select(f => Frames.RenderIcon(f, Sprites.DevilColor, _iconSize, Sprites.DevilPalette))
-            .ToArray();
+        _angelIcons = Sprites.Angel.Select(f => Frames.RenderIcon(f, Sprites.AngelColor, _iconSize, Sprites.AngelPalette)).ToArray();
+        _normalIcons = Sprites.Get(MoodRunner).Select(f => Frames.RenderIcon(f, Sprites.NormalColor, _iconSize)).ToArray();
+        _devilIcons = Sprites.Devil.Select(f => Frames.RenderIcon(f, Sprites.DevilColor, _iconSize, Sprites.DevilPalette)).ToArray();
+
         ShowCurrentFrame();
-        foreach (var icon in oldRunner) icon.Dispose();
-        foreach (var icon in oldDevil) icon.Dispose();
+        foreach (var set in old)
+            foreach (var icon in set) icon.Dispose();
     }
 
     private void ShowCurrentFrame()
@@ -158,14 +194,17 @@ internal sealed class Animator : IDisposable
         _customFrames = [];
     }
 
+    private static string AllSpritesSignature(string[][] runnerFrames) =>
+        Signature(runnerFrames) + Signature(Sprites.Angel) + Signature(Sprites.Devil) + Signature(Sprites.Get(MoodRunner));
+
     private static string Signature(string[][] frames) =>
         string.Join("|", frames.Select(f => string.Join("", f)));
 
     public void Dispose()
     {
         _timer.Dispose();
-        foreach (var icon in _runnerIcons) icon.Dispose();
-        foreach (var icon in _devilIcons) icon.Dispose();
+        foreach (var set in new[] { _runnerIcons, _angelIcons, _normalIcons, _devilIcons })
+            foreach (var icon in set) icon.Dispose();
         DisposeCustomFrames();
     }
 }
