@@ -32,11 +32,10 @@ internal sealed class CustomRunnerForm : Form
         _inputBack = Theme.AppsAreLight ? Color.White : Color.FromArgb(56, 56, 56);
 
         Text = "커스텀 러너";
-        AutoScaleMode = AutoScaleMode.Dpi;
-        AutoScaleDimensions = new SizeF(96, 96);
-        ClientSize = new Size(700, 540);
-        FormBorderStyle = FormBorderStyle.FixedSingle;  // 크기 고정 (SPEC 3.5)
-        MaximizeBox = false;
+        // 화면 배율(150% 등)에 맞춰 모든 위치·크기를 직접 계산함 (S 함수). Windows 자동 확대는 끔
+        AutoScaleMode = AutoScaleMode.None;
+        FormBorderStyle = FormBorderStyle.Sizable;  // 크기 조절 가능 (SPEC 5.4, 원본은 고정)
+        MaximizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = _colors.Back;
         ForeColor = _colors.Text;
@@ -47,63 +46,118 @@ internal sealed class CustomRunnerForm : Form
         StartNew();
     }
 
+    /// <summary>100% 배율 기준 크기 → 지금 화면 배율의 실제 픽셀 (150%면 1.5배)</summary>
+    private int S(int logical) => LogicalToDeviceUnits(logical);
+
+    /// <summary>
+    /// 배치. 라벨 폭은 실제 글자 길이를 재서 정하고, 나머지는 위에서 아래로 차례로 쌓음
+    /// → 배율이나 글꼴이 달라도 겹치거나 잘리지 않음.
+    /// </summary>
     private void BuildLayout()
     {
-        // ── 왼쪽: 러너 목록 ──
-        AddLabel("추가된 러너 목록:", 12, 12, bold: true);
-        _list.SetBounds(12, 38, 170, 446);
-        _list.BorderStyle = BorderStyle.FixedSingle;
-        StyleInput(_list);
-        Controls.Add(_list);
+        int margin = S(14), gap = S(10);
+        int rowH = S(32);              // 버튼 높이
+        int leftW = S(180);            // 왼쪽 목록 폭
+        int fieldW = S(400);           // 오른쪽 입력 영역 폭
 
-        StyleButton(_delete, "×", 12, 492, 34, 30);
-        _delete.Enabled = false;
-        StyleButton(_new, "새로 만들기", 52, 492, 130, 30);
+        // ── 가로 위치 ──
+        int dividerX = margin + leftW + S(14);
+        int labelX = dividerX + S(14);
+        int captionW = new[] { "러너 이름:", "요구 사항:", "프레임:", "미리보기:" }
+            .Max(c => TextRenderer.MeasureText(c, Font).Width);
+        int fieldX = labelX + captionW + gap;
+        int right = fieldX + fieldW;
 
-        var divider = new Panel { BackColor = _colors.Border };
-        divider.SetBounds(196, 12, 1, 516);
-        Controls.Add(divider);
-
-        // ── 오른쪽: 편집 ──
-        AddLabel("러너 이름:", 212, 16);
-        _name.SetBounds(300, 12, 386, 26);
+        // ── 오른쪽: 위에서 아래로 ──
+        int y = margin;
         _name.BorderStyle = BorderStyle.FixedSingle;
         StyleInput(_name);
+        _name.SetBounds(fieldX, y, fieldW, _name.Height);
         Controls.Add(_name);
+        AddCaption("러너 이름:", labelX, _name);
 
-        AddLabel("요구 사항:", 212, 50);
-        AddLabel($"포맷: PNG | 최대 크기: {CustomRunnerStore.MaxImageSize}x{CustomRunnerStore.MaxImageSize}px", 300, 50, dim: true);
+        y = _name.Bottom + gap;
+        var requirement = AddLabel($"포맷: PNG | 최대 크기: {CustomRunnerStore.MaxImageSize}x{CustomRunnerStore.MaxImageSize}px", fieldX, y, dim: true);
+        AddCaption("요구 사항:", labelX, requirement);
 
-        AddLabel("프레임:", 212, 82);
-        _frames.SetBounds(300, 80, 386, 276);
+        y = requirement.Bottom + gap;
+        _frames.SetBounds(fieldX, y, fieldW, S(260));
         _frames.BackColor = _inputBack;
         _frames.ForeColor = _colors.Disabled;
         _frames.CellBack = _colors.Back;
         _frames.SelectBack = _colors.Hover;
         _frames.BorderColor = _colors.Border;
         Controls.Add(_frames);
+        var framesCaption = AddLabel("프레임:", labelX, y + S(2));
 
-        StyleButton(_add, "+", 300, 362, 34, 28);
-        StyleButton(_remove, "−", 340, 362, 34, 28);
+        y = _frames.Bottom + S(6);
+        StyleButton(_add, "+", fieldX, y, rowH, rowH, symbol: true);
+        StyleButton(_remove, "−", _add.Right + S(6), y, rowH, rowH, symbol: true);
 
-        AddLabel("미리보기:", 212, 412);
-        _preview.SetBounds(300, 408, 80, 80);
+        y = _add.Bottom + gap * 2;
+        _preview.SetBounds(fieldX, y, S(80), S(80));
         _preview.BackColor = _inputBack;
         Controls.Add(_preview);
+        var previewCaption = AddLabel("미리보기:", labelX, y + S(2));
 
-        AddLabel("느림", 396, 438, dim: true);
-        _speed.SetBounds(436, 426, 200, 45);
+        // 속도 슬라이더 줄: 미리보기 칸 가운데 높이에 "느림 ───●─── 빠름"
+        int sliderH = S(30);
+        int sliderTop = _preview.Top + (_preview.Height - sliderH) / 2;
+        var slow = AddLabel("느림", _preview.Right + S(16), sliderTop, dim: true);
+        var fast = AddLabel("빠름", 0, sliderTop, dim: true);
+        fast.Left = right - fast.Width;
+        _speed.AutoSize = false;
+        _speed.SetBounds(slow.Right + S(8), sliderTop, fast.Left - S(8) - (slow.Right + S(8)), sliderH);
         _speed.Minimum = 1;
         _speed.Maximum = 30;
         _speed.Value = 10;
         _speed.TickStyle = TickStyle.None;
         _speed.BackColor = _colors.Back;
         Controls.Add(_speed);
-        AddLabel("빠름", 642, 438, dim: true);
+        slow.Top = fast.Top = sliderTop + (sliderH - slow.Height) / 2;
 
-        StyleButton(_save, "저장", 586, 492, 100, 34);
+        // ── 맨 아래 버튼 줄 (왼쪽 ×·새로 만들기, 오른쪽 저장) ──
+        int bottomY = _preview.Bottom + S(20);
+        StyleButton(_save, "저장", right - S(100), bottomY, S(100), rowH);
         _save.BackColor = Color.FromArgb(47, 95, 178);
         _save.ForeColor = Color.White;
+        _save.FlatAppearance.BorderColor = _save.BackColor;
+        _save.FlatAppearance.MouseOverBackColor = Color.FromArgb(62, 112, 196);
+
+        // ── 왼쪽: 러너 목록 (오른쪽 높이에 맞춤) ──
+        var listTitle = AddLabel("추가된 러너 목록:", margin, margin, bold: true);
+        int listTop = listTitle.Bottom + S(6);
+        _list.BorderStyle = BorderStyle.FixedSingle;
+        _list.IntegralHeight = false;  // 정한 높이 그대로 (줄 높이에 맞춰 줄어들지 않게)
+        StyleInput(_list);
+        _list.SetBounds(margin, listTop, leftW, bottomY - gap - listTop);
+        Controls.Add(_list);
+
+        StyleButton(_delete, "×", margin, bottomY, rowH, rowH, symbol: true);
+        _delete.Enabled = false;
+        StyleButton(_new, "새로 만들기", _delete.Right + S(6), bottomY, leftW - rowH - S(6), rowH);
+
+        var divider = new Panel { BackColor = _colors.Border };
+        divider.SetBounds(dividerX, margin, 1, bottomY + rowH - margin);
+        Controls.Add(divider);
+
+        ClientSize = new Size(right + margin, bottomY + rowH + margin);
+        MinimumSize = Size;   // 처음 크기보다 작게는 못 줄임 (줄이면 겹침)
+
+        // ── 창 크기를 바꿀 때 따라 움직이는 방식 (창 크기를 정한 뒤에 지정해야 위치가 안 틀어짐) ──
+        const AnchorStyles Top = AnchorStyles.Top, Bottom = AnchorStyles.Bottom,
+                           Left = AnchorStyles.Left, Right = AnchorStyles.Right;
+        _list.Anchor = Top | Bottom | Left;                 // 세로로 늘어남
+        divider.Anchor = Top | Bottom | Left;
+        _delete.Anchor = _new.Anchor = Bottom | Left;       // 창 아래에 붙음
+        _name.Anchor = Top | Left | Right;                  // 가로로 늘어남
+        _frames.Anchor = Top | Bottom | Left | Right;       // 가로·세로로 늘어남
+        framesCaption.Anchor = Top | Left;
+        _add.Anchor = _remove.Anchor = Bottom | Left;
+        _preview.Anchor = previewCaption.Anchor = slow.Anchor = Bottom | Left;
+        _speed.Anchor = Bottom | Left | Right;              // 가로로 늘어남
+        fast.Anchor = Bottom | Right;
+        _save.Anchor = Bottom | Right;                      // 오른쪽 아래에 붙음
     }
 
     private void WireEvents()
@@ -244,7 +298,7 @@ internal sealed class CustomRunnerForm : Form
 
     // ── 모양 ──
 
-    private void AddLabel(string text, int x, int y, bool bold = false, bool dim = false)
+    private Label AddLabel(string text, int x, int y, bool bold = false, bool dim = false)
     {
         var label = new Label
         {
@@ -255,7 +309,16 @@ internal sealed class CustomRunnerForm : Form
             BackColor = Color.Transparent,
         };
         if (bold) label.Font = new Font(Font, FontStyle.Bold);
+        label.Size = label.PreferredSize;   // 위치 계산에 바로 쓸 수 있게 크기 확정
         Controls.Add(label);
+        return label;
+    }
+
+    /// <summary>입력칸 왼쪽 라벨. 입력칸과 세로 가운데를 맞춤</summary>
+    private void AddCaption(string text, int x, Control target)
+    {
+        var label = AddLabel(text, x, 0);
+        label.Top = target.Top + (target.Height - label.Height) / 2;
     }
 
     private void StyleInput(Control control)
@@ -264,7 +327,8 @@ internal sealed class CustomRunnerForm : Form
         control.ForeColor = _colors.Text;
     }
 
-    private void StyleButton(Button button, string text, int x, int y, int w, int h)
+    /// <summary>평평한 버튼. symbol이면 × + − 같은 기호를 크고 가운데에 보이게 기호용 글꼴 사용</summary>
+    private void StyleButton(Button button, string text, int x, int y, int w, int h, bool symbol = false)
     {
         button.Text = text;
         button.SetBounds(x, y, w, h);
@@ -272,8 +336,27 @@ internal sealed class CustomRunnerForm : Form
         button.FlatAppearance.BorderColor = _colors.Border;
         button.BackColor = _inputBack;
         button.ForeColor = _colors.Text;
+        button.Padding = Padding.Empty;
+        button.TextAlign = ContentAlignment.MiddleCenter;
+        if (symbol) button.Font = new Font("Segoe UI", Font.SizeInPoints + 3, FontStyle.Regular);
         Controls.Add(button);
     }
+
+    // 창 제목 표시줄도 어두운 모드면 어둡게 (Windows 10 2004 이상)
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!Theme.AppsAreLight)
+        {
+            int on = 1;
+            DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref on, sizeof(int));
+        }
+    }
+
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 
     protected override void Dispose(bool disposing)
     {
@@ -292,11 +375,12 @@ internal sealed class CustomRunnerForm : Form
 /// </summary>
 internal sealed class FrameStrip : Control
 {
-    private const int Box = 48;
-    private const int LabelHeight = 18;
-    private const int Gap = 8;
-    private const int StrideX = Box + Gap + Gap;           // 칸 너비 + 칸 사이
-    private const int StrideY = Box + LabelHeight + Gap;
+    // 크기는 100% 배율 기준 → 지금 화면 배율에 맞춰 키움
+    private int Box => LogicalToDeviceUnits(48);
+    private int LabelHeight => LogicalToDeviceUnits(20);
+    private int Gap => LogicalToDeviceUnits(8);
+    private int StrideX => Box + Gap + Gap;           // 칸 너비 + 칸 사이
+    private int StrideY => Box + LabelHeight + Gap;
 
     /// <summary>탐색기에서 파일을 끌어다 놓음</summary>
     public event Action<string[]>? FilesDropped;
