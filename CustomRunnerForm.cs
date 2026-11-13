@@ -113,6 +113,8 @@ internal sealed class CustomRunnerForm : Form
         _new.Click += (_, _) => { _list.ClearSelected(); StartNew(); };
         _add.Click += (_, _) => AddFrames();
         _remove.Click += (_, _) => RemoveFrame();
+        _frames.FilesDropped += files => AddFrameFiles(files);
+        _frames.Reordered += () => _preview.Invalidate();
         _save.Click += (_, _) => Save();
 
         _speed.ValueChanged += (_, _) => _previewTimer.Interval = 1000 / _speed.Value;
@@ -180,9 +182,14 @@ internal sealed class CustomRunnerForm : Form
             Multiselect = true,
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        AddFrameFiles(dialog.FileNames);
+    }
 
+    /// <summary>+ 버튼과 끌어다 놓기 공통: 파일 이름 순서로 확인 후 맨 뒤에 추가 (SPEC 3.5, 5.4)</summary>
+    private void AddFrameFiles(IEnumerable<string> paths)
+    {
         var problems = new List<string>();
-        foreach (var path in dialog.FileNames.Order(StringComparer.CurrentCultureIgnoreCase))
+        foreach (var path in paths.Order(StringComparer.CurrentCultureIgnoreCase))
         {
             string? problem = CustomRunnerStore.Validate(path, out var bitmap);
             if (problem is null && bitmap is not null) _frames.Add(bitmap);
@@ -279,12 +286,27 @@ internal sealed class CustomRunnerForm : Form
     }
 }
 
-/// <summary>프레임 썸네일 목록. 각 칸 아래에 0부터 번호, 클릭하면 선택 (SPEC 3.5)</summary>
+/// <summary>
+/// 프레임 썸네일 목록. 각 칸 아래에 0부터 번호, 클릭하면 선택 (SPEC 3.5).
+/// PNG 파일을 끌어다 놓으면 FilesDropped, 썸네일을 끌어서 옮기면 순서가 바뀌고 Reordered (SPEC 5.4).
+/// </summary>
 internal sealed class FrameStrip : Control
 {
     private const int Box = 48;
     private const int LabelHeight = 18;
     private const int Gap = 8;
+    private const int StrideX = Box + Gap + Gap;           // 칸 너비 + 칸 사이
+    private const int StrideY = Box + LabelHeight + Gap;
+
+    /// <summary>탐색기에서 파일을 끌어다 놓음</summary>
+    public event Action<string[]>? FilesDropped;
+    /// <summary>썸네일을 끌어서 순서를 바꿈</summary>
+    public event Action? Reordered;
+
+    private int _pressIndex = -1;   // 누른 썸네일
+    private Point _pressPoint;
+    private bool _dragging;
+    private int _dropIndex = -1;    // 놓일 자리 (0 ~ 개수)
 
     public List<Bitmap> Images { get; } = [];
     public int SelectedIndex { get; private set; } = -1;
@@ -300,6 +322,7 @@ internal sealed class FrameStrip : Control
     {
         DoubleBuffered = true;
         ResizeRedraw = true;
+        AllowDrop = true;
     }
 
     /// <summary>목록 교체. 이전 그림은 메모리에서 해제</summary>
@@ -327,12 +350,32 @@ internal sealed class FrameStrip : Control
         Invalidate();
     }
 
+    private int PerRow => Math.Max(1, (Width - Gap) / StrideX);
+
     private Rectangle CellBounds(int index)
     {
-        int cellWidth = Box + Gap;
-        int perRow = Math.Max(1, (Width - Gap) / (cellWidth + Gap));
-        int row = index / perRow, col = index % perRow;
-        return new Rectangle(Gap + col * (cellWidth + Gap), Gap + row * (Box + LabelHeight + Gap), cellWidth, Box + LabelHeight);
+        int row = index / PerRow, col = index % PerRow;
+        return new Rectangle(Gap + col * StrideX, Gap + row * StrideY, Box + Gap, Box + LabelHeight);
+    }
+
+    /// <summary>마우스 위치에서 썸네일이 놓일 자리 (0 ~ 개수)</summary>
+    private int InsertionIndex(Point p)
+    {
+        int rows = Math.Max(1, (Images.Count + PerRow - 1) / PerRow);
+        int row = Math.Clamp((p.Y - Gap) / StrideY, 0, rows - 1);
+        int col = Math.Clamp((int)Math.Round((p.X - Gap) / (double)StrideX), 0, PerRow);
+        return Math.Clamp(row * PerRow + col, 0, Images.Count);
+    }
+
+    private void MoveFrame(int from, int insertAt)
+    {
+        int to = insertAt > from ? insertAt - 1 : insertAt;
+        if (to == from) return;
+        var image = Images[from];
+        Images.RemoveAt(from);
+        Images.Insert(to, image);
+        SelectedIndex = to;
+        Reordered?.Invoke();
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -353,9 +396,27 @@ internal sealed class FrameStrip : Control
                 new Rectangle(cell.X, box.Bottom, cell.Width, LabelHeight), ForeColor,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
+        // 끄는 중: 놓일 자리에 세로선
+        if (_dragging && _dropIndex >= 0)
+        {
+            var at = _dropIndex < Images.Count ? CellBounds(_dropIndex) : CellBounds(Images.Count - 1);
+            int x = _dropIndex < Images.Count ? at.Left - Gap / 2 : at.Right + Gap / 2;
+            using var marker = new Pen(Color.DodgerBlue, 3);
+            g.DrawLine(marker, x, at.Top, x, at.Bottom);
+        }
+
+        // 비어 있으면 안내 문구 (SPEC 5.4)
+        if (Images.Count == 0)
+        {
+            TextRenderer.DrawText(g, "PNG 파일을 여기로 끌어다 놓거나\n아래 + 버튼을 누르세요", Font,
+                ClientRectangle, ForeColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        }
+
         using var border = new Pen(BorderColor);
         g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
     }
+
+    // ── 클릭 선택 + 끌어서 순서 바꾸기 ──
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
@@ -364,8 +425,53 @@ internal sealed class FrameStrip : Control
         {
             if (CellBounds(i).Contains(e.Location)) { SelectedIndex = i; break; }
         }
+        _pressIndex = e.Button == MouseButtons.Left ? SelectedIndex : -1;
+        _pressPoint = e.Location;
         Invalidate();
         base.OnMouseDown(e);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        if (_pressIndex >= 0 && e.Button == MouseButtons.Left)
+        {
+            var drag = SystemInformation.DragSize;
+            if (!_dragging && (Math.Abs(e.X - _pressPoint.X) > drag.Width || Math.Abs(e.Y - _pressPoint.Y) > drag.Height))
+                _dragging = true;
+            if (_dragging)
+            {
+                _dropIndex = InsertionIndex(e.Location);
+                Cursor = Cursors.SizeAll;
+                Invalidate();
+            }
+        }
+        base.OnMouseMove(e);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        if (_dragging && _pressIndex >= 0 && _dropIndex >= 0) MoveFrame(_pressIndex, _dropIndex);
+        _pressIndex = -1;
+        _dragging = false;
+        _dropIndex = -1;
+        Cursor = Cursors.Default;
+        Invalidate();
+        base.OnMouseUp(e);
+    }
+
+    // ── 탐색기에서 파일 끌어다 놓기 ──
+
+    protected override void OnDragEnter(DragEventArgs e)
+    {
+        e.Effect = e.Data?.GetDataPresent(DataFormats.FileDrop) == true ? DragDropEffects.Copy : DragDropEffects.None;
+        base.OnDragEnter(e);
+    }
+
+    protected override void OnDragDrop(DragEventArgs e)
+    {
+        if (e.Data?.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
+            FilesDropped?.Invoke(files);
+        base.OnDragDrop(e);
     }
 }
 

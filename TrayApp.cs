@@ -66,6 +66,8 @@ internal sealed class TrayApp : ApplicationContext
 
         // Windows 테마가 바뀌면 바로 따라감 (SPEC 5.4)
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+        // 모니터 배율·구성이 바뀌면 아이콘 크기를 다시 맞춤 (SPEC 5.4)
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         // 1초마다 측정 → 속도 결정 (SPEC 5.1)
         _sampler = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -130,7 +132,7 @@ internal sealed class TrayApp : ApplicationContext
         foreach (ToolStripItem old in _runnerMenu.DropDownItems) old.Image?.Dispose();
         _runnerMenu.DropDownItems.Clear();
 
-        int imageSize = SystemInformation.SmallIconSize.Width;
+        int imageSize = Frames.TrayIconSize();
         _runnerMenu.DropDown.ImageScalingSize = new Size(imageSize, imageSize);
         Color menuText = Theme.AppsAreLight ? MenuColors.Light.Text : MenuColors.Dark.Text;
 
@@ -211,12 +213,47 @@ internal sealed class TrayApp : ApplicationContext
     {
         bool slowTurn = _status.Sample(_settings.Basis);
         ApplySpeed();
+        ApplyAnger();
         UpdateTooltip();
+
+        // 5초마다 작업 표시줄 모니터 배율 확인 (알림을 놓쳐도 맞춰지게)
+        if (slowTurn) CheckIconSize();
 
         // 메뉴가 열려 있으면 5초마다 화면 갱신 (SPEC 3.1)
         if (slowTurn && _statusMenu.Visible) RefreshStatusLines();
 
         if (_devMode) _animator.RefreshIfChanged();
+    }
+
+    // 분노 모드 기준 (SPEC 5.4): 90% 이상이면 켜고, 85% 미만이면 끔 (경계에서 깜빡임 방지)
+    private const double AngerOn = 90;
+    private const double AngerOff = 85;
+
+    private void ApplyAnger()
+    {
+        double value = _status.BasisValue(_settings.Basis);
+        if (!_animator.IsAngry && value >= AngerOn) _animator.SetAngry(true);
+        else if (_animator.IsAngry && value < AngerOff) _animator.SetAngry(false);
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => _ui.Post(_ => CheckIconSize(), null);
+
+    private void CheckIconSize()
+    {
+        if (_animator.CheckIconSize()) RebuildRunnerMenu(); // 메뉴 그림 크기도 맞춤
+    }
+
+    /// <summary>Windows 작업 관리자 실행 (SPEC 5.4)</summary>
+    private static void OpenTaskManager()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("taskmgr.exe") { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            // 사용자가 권한 확인 창에서 취소한 경우 등은 무시
+        }
     }
 
     private void ApplySpeed() =>
@@ -300,6 +337,7 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add(BuildInfoMenu());
 
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem("작업 관리자", null, (_, _) => OpenTaskManager())); // 종료 바로 위 (SPEC 5.4)
         menu.Items.Add(new ToolStripMenuItem("종료", null, (_, _) => ExitThread()));
 
         return menu;
@@ -410,6 +448,7 @@ internal sealed class TrayApp : ApplicationContext
         if (disposing)
         {
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged; // 해제 안 하면 메모리가 샘
+            SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
             _sampler.Dispose();
             _tray.Visible = false;   // 종료 후 트레이에 유령 아이콘이 남지 않게
             _tray.Dispose();

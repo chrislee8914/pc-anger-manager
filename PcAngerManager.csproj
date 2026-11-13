@@ -9,7 +9,7 @@
     <AssemblyName>PcAngerManager</AssemblyName>
     <RootNamespace>PcAngerManager</RootNamespace>
     <Product>PC분노관리</Product>
-    <Version>0.1.1</Version>
+    <Version>0.2.0</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 

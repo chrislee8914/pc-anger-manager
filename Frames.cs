@@ -9,9 +9,12 @@ namespace PcAngerManager;
 internal static class Frames
 {
     public const int IconSize = 16;
+    private const int SM_CXSMICON = 49;
 
-    /// <summary>'#' 칸을 지정한 색으로 칠한 16x16 이미지</summary>
-    public static Bitmap Render(string[] rows, Color color)
+    /// <summary>
+    /// 16x16 이미지. '#' 칸은 color로, palette에 있는 글자는 그 색으로 칠함 (예: 악마 토끼 눈 'E').
+    /// </summary>
+    public static Bitmap Render(string[] rows, Color color, IReadOnlyDictionary<char, Color>? palette = null)
     {
         var bmp = new Bitmap(IconSize, IconSize);
         for (int y = 0; y < IconSize && y < rows.Length; y++)
@@ -19,25 +22,38 @@ internal static class Frames
             string row = rows[y];
             for (int x = 0; x < IconSize && x < row.Length; x++)
             {
-                if (row[x] == '#') bmp.SetPixel(x, y, color);
+                char c = row[x];
+                if (c == '#') bmp.SetPixel(x, y, color);
+                else if (palette is not null && palette.TryGetValue(c, out var extra)) bmp.SetPixel(x, y, extra);
             }
         }
         return bmp;
     }
 
-    public static Icon RenderIcon(string[] rows, Color color)
+    public static Icon RenderIcon(string[] rows, Color color, int size, IReadOnlyDictionary<char, Color>? palette = null)
     {
-        using var bmp = Render(rows, color);
-        return ToTrayIcon(bmp);
+        using var bmp = Render(rows, color, palette);
+        return ToTrayIcon(bmp, size);
     }
 
     /// <summary>
-    /// 트레이용 아이콘. 화면 배율에 맞는 크기(100% = 16, 150% = 24 등)로 직접 키워서 만듦.
+    /// 트레이 아이콘 크기 (SPEC 5.4). 작업 표시줄이 있는 모니터의 배율 기준
+    /// (100% = 16, 150% = 24 등). 배율이 다른 모니터를 써도 그 모니터에 맞는 크기를 줌.
+    /// </summary>
+    public static int TrayIconSize()
+    {
+        IntPtr taskbar = FindWindow("Shell_TrayWnd", null);
+        uint dpi = taskbar != IntPtr.Zero ? GetDpiForWindow(taskbar) : 0;
+        return dpi > 0 ? GetSystemMetricsForDpi(SM_CXSMICON, dpi) : SystemInformation.SmallIconSize.Width;
+    }
+
+    /// <summary>
+    /// 트레이용 아이콘. 정해진 크기로 직접 키워서 만듦.
     /// Windows가 늘리면 흐릿해지므로 픽셀을 그대로 키움 (비율 유지, 가운데 정렬).
     /// </summary>
-    public static Icon ToTrayIcon(Bitmap source)
+    public static Icon ToTrayIcon(Bitmap source, int size)
     {
-        using var square = ToSquare(source, SystemInformation.SmallIconSize.Width);
+        using var square = ToSquare(source, size);
         return ToIcon(square);
     }
 
@@ -85,4 +101,13 @@ internal static class Frames
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindow(string className, string? windowName);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetricsForDpi(int index, uint dpi);
 }
