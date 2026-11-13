@@ -19,7 +19,7 @@ internal sealed class AppSettings
     public const string ThemeSystem = "시스템 사용 설정";
     public const string ThemeLight = "라이트 모드";
     public const string ThemeDark = "다크 모드";
-    public const string ThemeMood = "기분 변신";
+    public const string ThemeMood = "분노 게이지";
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -31,18 +31,23 @@ internal sealed class AppSettings
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // 한글을 그대로 저장
     };
 
+    public static readonly string[] Themes = [ThemeMood, ThemeSystem, ThemeLight, ThemeDark];
+
     public static AppSettings Load()
     {
+        var settings = new AppSettings();
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath), JsonOptions) ?? new();
+                settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath), JsonOptions) ?? new();
         }
         catch (Exception)
         {
             // 파일이 깨졌으면 기본값으로 시작
         }
-        return new();
+        // 모르는 테마 이름(예: 옛 버전 이름)이면 기본값으로
+        if (!Themes.Contains(settings.Theme)) settings.Theme = ThemeMood;
+        return settings;
     }
 
     public void Save()

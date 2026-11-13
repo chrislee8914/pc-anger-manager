@@ -14,7 +14,7 @@ internal enum Mood { Calm, Normal, Angry }
 ///  - Windows 타이머는 약 15.6ms 단위로만 깨어나서 정확하지 않으므로,
 ///    "다음 프레임 예정 시각"을 시계로 계산해 평균 속도가 설정값과 맞게 함
 ///
-/// 기분 변신 테마(SPEC 5.4): 기본 캐릭터는 평온 = 천사, 보통 = 노랑, 분노 = 악마 버전.
+/// 분노 게이지 테마(SPEC 5.4): 기본 캐릭터는 평온 = 천사, 보통 = 노랑, 분노 = 악마 버전.
 /// 커스텀 러너는 분노일 때만 악마 토끼. 모든 아이콘 묶음을 미리 만들어 두므로 바꿀 때 비용이 거의 없음.
 /// </summary>
 internal sealed class Animator : IDisposable
@@ -93,7 +93,7 @@ internal sealed class Animator : IDisposable
         if (!IsCustom) SetRunner(Runner, color);
     }
 
-    /// <summary>기분 변신 테마 켜기/끄기</summary>
+    /// <summary>분노 게이지 테마 켜기/끄기</summary>
     public void SetMoodEnabled(bool enabled)
     {
         if (enabled == MoodEnabled) return;

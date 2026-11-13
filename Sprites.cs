@@ -285,7 +285,7 @@ internal static class Sprites
     private static string[][] DevilHorse => Compose(Horse, 10, DevilHorseTop);
 
     /// <summary>
-    /// 기분 변신 테마에서 보여 줄 그림·색 (SPEC 5.4).
+    /// 분노 게이지 테마에서 보여 줄 그림·색 (SPEC 5.4).
     /// 평온 = 천사(파랑), 보통 = 기본 그림(노랑), 분노 = 악마(빨강).
     /// </summary>
     public static (string[][] Frames, Color Color, Dictionary<char, Color>? Palette) MoodLook(string runner, Mood mood) =>
