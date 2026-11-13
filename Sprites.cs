@@ -23,7 +23,7 @@ internal static class Sprites
     // 보통: 노란 일반 토끼 (토끼 그림을 노란색으로)
     public static readonly Color NormalColor = Color.FromArgb(255, 205, 0);
 
-    public static string[][] Angel =>
+    public static string[][] AngelRabbit =>
     [
         [
             "................",
@@ -104,7 +104,7 @@ internal static class Sprites
     public static readonly Color DevilColor = Color.FromArgb(255, 48, 48);
     public static readonly Dictionary<char, Color> DevilPalette = new() { ['E'] = Color.FromArgb(255, 222, 0) };
 
-    public static string[][] Devil =>
+    public static string[][] DevilRabbit =>
     [
         [
             "................",
@@ -179,6 +179,122 @@ internal static class Sprites
             "................",
         ],
     ];
+
+    // ── 고양이·말의 천사/악마 버전 ──
+    // 몸통 윗부분(머리·꼬리·날개·뿔)만 따로 그리고, 다리는 기본 그림의 다리를 그대로 이어 붙임.
+    // 고양이: 위 11줄 + 기본 다리 5줄. A = 꼬리 위(0·2번 프레임), B = 꼬리 아래(1·3번 프레임)
+
+    private static readonly string[] AngelCatTopA =
+    [
+        "................",
+        "................",
+        "...........HHHH.",
+        "#...............",
+        "#..........#..#.",
+        ".#...WW....####.",
+        ".#..WWWW...#.###",
+        "..#..WWW..#####.",
+        "..##########....",
+        "...#########....",
+        "...#########....",
+    ];
+
+    private static readonly string[] AngelCatTopB =
+    [
+        "................",
+        "................",
+        "...........HHHH.",
+        "................",
+        "...........#..#.",
+        ".....WW....####.",
+        "##..WWWW...#.###",
+        ".##..WWW..#####.",
+        "..##########....",
+        "...#########....",
+        "...#########....",
+    ];
+
+    private static readonly string[] DevilCatTopA =
+    [
+        "................",
+        "................",
+        ".#..............",
+        "###.......#....#",
+        ".#.........#..#.",
+        ".#.........####.",
+        ".#.........#E###",
+        "..#.......#####.",
+        "..##########....",
+        "...#########....",
+        "...#########....",
+    ];
+
+    private static readonly string[] DevilCatTopB =
+    [
+        "................",
+        "................",
+        "................",
+        "..........#....#",
+        "...........#..#.",
+        ".#.........####.",
+        "###........#E###",
+        ".##.......#####.",
+        "..##########....",
+        "...#########....",
+        "...#########....",
+    ];
+
+    // 말 천사: 고리 자리를 위해 한 줄 아래로 내림 → 위 11줄 + 기본 그림 10~14줄
+    private static readonly string[] AngelHorseTop =
+    [
+        "..........HHHH..",
+        "................",
+        "...........##...",
+        "...........####.",
+        "..........##.###",
+        "....WW....###...",
+        "...WWWW...###...",
+        ".#..WWW..####...",
+        "#.##########....",
+        "#.##########....",
+        "..##########....",
+    ];
+
+    // 말 악마: 위 10줄 + 기본 그림 10~15줄
+    private static readonly string[] DevilHorseTop =
+    [
+        "..........#...#.",
+        "...........#.#..",
+        "...........####.",
+        "..........##E###",
+        ".#........###...",
+        "###.......###...",
+        ".#.......####...",
+        ".###########....",
+        "..##########....",
+        "..##########....",
+    ];
+
+    /// <summary>윗부분 + 기본 그림의 아랫부분(fromRow부터)을 이어 붙여 16줄 프레임을 만듦</summary>
+    private static string[][] Compose(string[][] baseFrames, int fromRow, params string[][] tops) =>
+        baseFrames.Select((frame, i) => tops[i % tops.Length].Concat(frame.Skip(fromRow)).Take(16).ToArray()).ToArray();
+
+    private static string[][] AngelCat => Compose(Cat, 11, AngelCatTopA, AngelCatTopB);
+    private static string[][] DevilCat => Compose(Cat, 11, DevilCatTopA, DevilCatTopB);
+    private static string[][] AngelHorse => Compose(Horse, 10, AngelHorseTop);
+    private static string[][] DevilHorse => Compose(Horse, 10, DevilHorseTop);
+
+    /// <summary>
+    /// 기분 변신 테마에서 보여 줄 그림·색 (SPEC 5.4).
+    /// 평온 = 천사(파랑), 보통 = 기본 그림(노랑), 분노 = 악마(빨강).
+    /// </summary>
+    public static (string[][] Frames, Color Color, Dictionary<char, Color>? Palette) MoodLook(string runner, Mood mood) =>
+        mood switch
+        {
+            Mood.Calm => (runner switch { "고양이" => AngelCat, "말" => AngelHorse, _ => AngelRabbit }, AngelColor, AngelPalette),
+            Mood.Angry => (runner switch { "고양이" => DevilCat, "말" => DevilHorse, _ => DevilRabbit }, DevilColor, DevilPalette),
+            _ => (Get(runner), NormalColor, null),
+        };
 
     public static string[][] Get(string name) => name switch
     {

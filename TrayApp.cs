@@ -61,6 +61,7 @@ internal sealed class TrayApp : ApplicationContext
 
         _animator = new Animator(_tray);
         ApplySelectedRunner();
+        _animator.SetMoodEnabled(_settings.Theme == AppSettings.ThemeMood); // 기분 변신 테마 (SPEC 5.4)
         _animator.SetFps(SpeedRule.Fps(0, _settings.MaxFps));
         _tray.Visible = true;
 
@@ -353,10 +354,11 @@ internal sealed class TrayApp : ApplicationContext
         var settings = new ToolStripMenuItem("설정");
 
         settings.DropDownItems.Add(RadioSubmenu("테마",
-            [AppSettings.ThemeSystem, AppSettings.ThemeLight, AppSettings.ThemeDark], _settings.Theme, option =>
+            [AppSettings.ThemeSystem, AppSettings.ThemeLight, AppSettings.ThemeDark, AppSettings.ThemeMood], _settings.Theme, option =>
             {
                 _settings.Theme = option;
                 ApplyIconColor();
+                _animator.SetMoodEnabled(option == AppSettings.ThemeMood);
             }));
 
         settings.DropDownItems.Add(RadioSubmenu("달리기 속도 기준",

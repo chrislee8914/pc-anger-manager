@@ -19,6 +19,7 @@ internal static class Theme
     /// <summary>
     /// 아이콘 색. 원본 관찰(3.7) 그대로: 라이트 모드 = 흰색, 다크 모드 = 검은색.
     /// 시스템 = 작업 표시줄이 어두우면 흰색, 밝으면 검은색.
+    /// 기분 변신 = 기본 캐릭터는 단계별 고정 색을 쓰므로, 여기서는 시스템과 같은 색(예비용)을 줌.
     /// </summary>
     public static Color IconColor(string themeSetting) => themeSetting switch
     {

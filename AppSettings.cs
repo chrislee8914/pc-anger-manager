@@ -11,7 +11,7 @@ internal sealed class AppSettings
     public string Runner { get; set; } = "토끼";
     /// <summary>사용 중인 커스텀 러너 이름. 비어 있으면 기본 캐릭터(Runner) 사용 (SPEC 5.4)</summary>
     public string CustomRunner { get; set; } = "";
-    public string Theme { get; set; } = ThemeSystem;
+    public string Theme { get; set; } = ThemeMood;   // v0.2.0부터 기본값 (SPEC 5.4)
     public string Basis { get; set; } = SystemStatus.BasisCpu;
     public int MaxFps { get; set; } = 30;
     public string TemperatureUnit { get; set; } = "시스템";
@@ -19,6 +19,7 @@ internal sealed class AppSettings
     public const string ThemeSystem = "시스템 사용 설정";
     public const string ThemeLight = "라이트 모드";
     public const string ThemeDark = "다크 모드";
+    public const string ThemeMood = "기분 변신";
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
